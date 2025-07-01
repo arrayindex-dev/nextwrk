@@ -61,11 +61,12 @@ func switchToWorkspace(workspaceNum int) error {
 // traverseAndMoveWindows recursively traverses the i3 tree and moves windows to new workspace numbers.
 func traverseAndMoveWindows(node *i3.Node, wsNum int, wsMap map[int]int) error {
 	if node.Type == "workspace" {
-		// Parse workspace number from Name field
+		// Only parse numeric workspace names
 		if num, err := strconv.Atoi(node.Name); err == nil {
 			wsNum = num
 		} else {
-			return fmt.Errorf("failed to parse workspace number from name %q: %w", node.Name, err)
+			// Skip non-numeric workspaces like __i3_scratch
+			wsNum = 0
 		}
 	}
 	if node.Window != 0 && wsNum > 0 && wsMap[wsNum] != wsNum {
