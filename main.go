@@ -12,12 +12,7 @@ import (
 )
 
 // getWorkspaceNumbers retrieves and sorts workspace numbers from i3.
-func getWorkspaceNumbers() ([]int, error) {
-	workspaces, err := i3.GetWorkspaces()
-	if err != nil {
-		return nil, fmt.Errorf("failed to get workspaces: %w", err)
-	}
-
+func getWorkspaceNumbers(workspaces []i3.Workspace) ([]int, error) {
 	numbers := make([]int, len(workspaces))
 	for i, ws := range workspaces {
 		numbers[i] = int(ws.Num)
@@ -91,7 +86,7 @@ func traverseAndMoveWindows(node *i3.Node, wsNum int, wsMap map[int]int) error {
 	return nil
 }
 
-// renumberWorkspaces reassigns workspace numbers to be consecutive, moving windows accordingly.
+// renumberWorkspaces reassigns workspace numbers to be consecutive, moving windows and restoring focus.
 func renumberWorkspaces() error {
 	// Get workspaces
 	workspaces, err := i3.GetWorkspaces()
@@ -99,12 +94,20 @@ func renumberWorkspaces() error {
 		return fmt.Errorf("failed to get workspaces: %w", err)
 	}
 
-	// Create mapping of old to new workspace numbers
-	wsNums := make([]int, len(workspaces))
-	for i, ws := range workspaces {
-		wsNums[i] = int(ws.Num)
+	// Find the currently focused workspace
+	focusedWorkspaceNum := 0
+	for _, ws := range workspaces {
+		if ws.Focused {
+			focusedWorkspaceNum = int(ws.Num)
+			break
+		}
 	}
-	sort.Ints(wsNums)
+
+	// Create mapping of old to new workspace numbers
+	wsNums, err := getWorkspaceNumbers(workspaces)
+	if err != nil {
+		return err
+	}
 	wsMap := make(map[int]int)
 	for newNum, oldNum := range wsNums {
 		wsMap[oldNum] = newNum + 1
@@ -131,14 +134,22 @@ func renumberWorkspaces() error {
 		}
 	}
 
+	// Switch to the renumbered focused workspace
+	if focusedWorkspaceNum > 0 {
+		if newNum, ok := wsMap[focusedWorkspaceNum]; ok {
+			return switchToWorkspace(newNum)
+		}
+	}
+
 	return nil
 }
 
+// help displays usage information for the script.
 func help() {
 	fmt.Println("Usage: nextwrk [--switch] [--renumber]")
 	fmt.Println("	[no args]		Move focused container to the next free workspace")
 	fmt.Println("	--switch		Move container to next free workspace and switch to it")
-	fmt.Println("	--renumber		Renumber all workspaces to remove gaps")
+	fmt.Println("	--renumber		Renumber all workspaces to remove gaps and restore focus")
 	fmt.Println("	[any other args]	Show this help message")
 	fmt.Println("------------------------------")
 	fmt.Println("Built with Go for i3WM. MIT License. github.com/arrayindex-dev/nextwrk")
@@ -161,7 +172,7 @@ func main() {
 	}
 
 	if renumber {
-		// Renumber workspaces to remove gaps
+		// Renumber workspaces to remove gaps and restore focus
 		if err := renumberWorkspaces(); err != nil {
 			log.Fatal(err)
 		}
@@ -169,7 +180,11 @@ func main() {
 	}
 
 	// Original functionality: move container and optionally switch workspace
-	numbers, err := getWorkspaceNumbers()
+	workspaces, err := i3.GetWorkspaces()
+	if err != nil {
+		log.Fatal(err)
+	}
+	numbers, err := getWorkspaceNumbers(workspaces)
 	if err != nil {
 		log.Fatal(err)
 	}
